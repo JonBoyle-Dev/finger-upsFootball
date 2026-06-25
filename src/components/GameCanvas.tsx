@@ -39,25 +39,24 @@ function SoccerBall({ x, y }: { x: Animated.Value; y: Animated.Value }) {
 }
 
 function Goalkeeper({ x, goalTop }: { x: Animated.Value; goalTop: number }) {
-  const headTop = goalTop - GOAL_HEIGHT / 2 - GK_RADIUS * 2 - 10;
+  // Position goalkeeper so full body sits inside the goal
+  const headTop = goalTop - GOAL_HEIGHT + 6;
   return (
     <>
       {/* Left arm */}
-      <Animated.View style={[styles.gkArm, { top: headTop + GK_RADIUS * 2 + 8, left: Animated.add(x, new Animated.Value(-22)) }]} />
+      <Animated.View style={[styles.gkArm, { top: headTop + GK_RADIUS * 2 + 4, left: Animated.add(x, new Animated.Value(-22)) }]} />
       {/* Right arm */}
-      <Animated.View style={[styles.gkArm, { top: headTop + GK_RADIUS * 2 + 8, left: Animated.add(x, new Animated.Value(GK_RADIUS * 2 + 2)) }]} />
+      <Animated.View style={[styles.gkArm, { top: headTop + GK_RADIUS * 2 + 4, left: Animated.add(x, new Animated.Value(GK_RADIUS * 2 + 2)) }]} />
       {/* Body */}
       <Animated.View style={[styles.gkBody, { top: headTop + GK_RADIUS * 2, left: Animated.add(x, new Animated.Value(GK_RADIUS - 12)) }]} />
       {/* Left leg */}
-      <Animated.View style={[styles.gkLeg, { top: headTop + GK_RADIUS * 2 + 38, left: Animated.add(x, new Animated.Value(GK_RADIUS - 16)) }]} />
+      <Animated.View style={[styles.gkLeg, { top: headTop + GK_RADIUS * 2 + 36, left: Animated.add(x, new Animated.Value(GK_RADIUS - 14)) }]} />
       {/* Right leg */}
-      <Animated.View style={[styles.gkLeg, { top: headTop + GK_RADIUS * 2 + 38, left: Animated.add(x, new Animated.Value(GK_RADIUS + 2)) }]} />
+      <Animated.View style={[styles.gkLeg, { top: headTop + GK_RADIUS * 2 + 36, left: Animated.add(x, new Animated.Value(GK_RADIUS + 4)) }]} />
       {/* Head */}
       <Animated.View style={[styles.gkHead, { top: headTop, left: x }]}>
-        {/* Eyes */}
         <View style={styles.gkEyeLeft} />
         <View style={styles.gkEyeRight} />
-        {/* Mouth */}
         <View style={styles.gkMouth} />
       </Animated.View>
     </>
@@ -75,6 +74,7 @@ export default function GameCanvas() {
   const powerRef = useRef(50);
   const [score, setScore] = useState(0);
   const [juggleCount, setJuggleCount] = useState(0);
+  const [bestJuggles, setBestJuggles] = useState(0);
   const [message, setMessage] = useState('');
   const gkXRef = useRef(width / 2);
   const tRef = useRef(0);
@@ -205,7 +205,11 @@ export default function GameCanvas() {
           const { locationX, locationY } = evt.nativeEvent;
           juggle(locationX, locationY);
           showLeg(locationX, locationY);
-          setJuggleCount(c => c + 1);
+          setJuggleCount(c => {
+            const next = c + 1;
+            setBestJuggles(b => Math.max(b, next));
+            return next;
+          });
         } else if (phaseRef.current === 'aiming') {
           doShoot();
         }
@@ -259,7 +263,10 @@ export default function GameCanvas() {
 
       {/* HUD */}
       <View style={styles.hud}>
-        <Text style={styles.hudText}>Juggles: {juggleCount}</Text>
+        <View>
+          <Text style={styles.hudText}>Juggles: {juggleCount}</Text>
+          <Text style={styles.hudSubText}>Best: {bestJuggles}</Text>
+        </View>
         <Text style={styles.hudText}>Goals: {score}</Text>
       </View>
 
@@ -371,6 +378,7 @@ const styles = StyleSheet.create({
   // HUD
   hud: { position: 'absolute', top: 50, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20 },
   hudText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  hudSubText: { color: 'rgba(255,255,255,0.7)', fontSize: 13 },
   hint: { position: 'absolute', bottom: 60, left: 0, right: 0, alignItems: 'center' },
   hintText: { color: 'yellow', fontSize: 16, fontWeight: '600' },
   messageBanner: { position: 'absolute', top: '40%', left: 0, right: 0, alignItems: 'center' },
