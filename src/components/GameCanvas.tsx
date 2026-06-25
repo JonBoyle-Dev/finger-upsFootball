@@ -36,6 +36,7 @@ export default function GameCanvas() {
   const gkXRef = useRef(width / 2);
   const tRef = useRef(0);
   const lastTwoFingerTap = useRef(0);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const ballAnim = useRef(new Animated.ValueXY({ x: width / 2 - BALL_RADIUS, y: height * 0.4 - BALL_RADIUS })).current;
   const gkAnim = useRef(new Animated.Value(width / 2 - GK_RADIUS)).current;
@@ -53,6 +54,11 @@ export default function GameCanvas() {
     width,
     height,
     onUpdate: handleUpdate,
+    onGrounded: useCallback(() => {
+      if (phaseRef.current === 'juggling') {
+        setJuggleCount(0);
+      }
+    }, []),
   });
 
   const showMessage = (msg: string, ms = 1200) => {
@@ -86,7 +92,7 @@ export default function GameCanvas() {
       phaseRef.current = 'juggling';
       setPhase('juggling');
       setJuggleCount(0);
-    }, 1400);
+    }, 2500);
   }, [shoot, getBallPos, releaseBall, height, width]);
 
   const panResponder = useRef(
@@ -94,17 +100,14 @@ export default function GameCanvas() {
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
 
-      onPanResponderGrant: (evt) => {
-        const { touches } = evt.nativeEvent;
-        if (touches.length >= 2) {
-          const now = Date.now();
-          if (now - lastTwoFingerTap.current < 350 && phaseRef.current === 'juggling') {
+      onPanResponderGrant: () => {
+        if (phaseRef.current === 'juggling') {
+          longPressTimer.current = setTimeout(() => {
             trapBall();
             phaseRef.current = 'trapped';
             setPhase('trapped');
             showMessage('Trapped! Drag to aim', 2000);
-          }
-          lastTwoFingerTap.current = now;
+          }, 500);
         }
       },
 
@@ -127,6 +130,10 @@ export default function GameCanvas() {
       },
 
       onPanResponderRelease: (evt, gs) => {
+        if (longPressTimer.current) {
+          clearTimeout(longPressTimer.current);
+          longPressTimer.current = null;
+        }
         const isSmallMove = Math.abs(gs.dx) < 12 && Math.abs(gs.dy) < 12;
         if (!isSmallMove) return;
 
@@ -193,7 +200,7 @@ export default function GameCanvas() {
       {phase === 'juggling' && juggleCount === 0 && (
         <View style={styles.instructions}>
           <Text style={styles.instructText}>Tap near the ball to juggle</Text>
-          <Text style={styles.instructText}>Two-finger double-tap to trap</Text>
+          <Text style={styles.instructText}>Hold finger to trap</Text>
         </View>
       )}
     </View>

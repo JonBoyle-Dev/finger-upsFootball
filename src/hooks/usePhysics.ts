@@ -1,9 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react';
 
 export const BALL_RADIUS = 28;
-const GRAVITY = 0.5;
-const DAMPING = 0.998;
-const BOUNCE = 0.45;
+const GRAVITY = 0.3;
+const DAMPING = 0.995;
+const BOUNCE = 0.38;
 
 export type BallState = {
   x: number;
@@ -17,9 +17,10 @@ type Options = {
   width: number;
   height: number;
   onUpdate: (ball: BallState) => void;
+  onGrounded?: () => void;
 };
 
-export function usePhysics({ width, height, onUpdate }: Options) {
+export function usePhysics({ width, height, onUpdate, onGrounded }: Options) {
   const stateRef = useRef<BallState>({
     x: width / 2,
     y: height * 0.4,
@@ -31,6 +32,8 @@ export function usePhysics({ width, height, onUpdate }: Options) {
   const rafRef = useRef<number>(0);
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
+  const onGroundedRef = useRef(onGrounded);
+  onGroundedRef.current = onGrounded;
 
   useEffect(() => {
     if (!width || !height) return;
@@ -50,6 +53,7 @@ export function usePhysics({ width, height, onUpdate }: Options) {
           s.y = height - BALL_RADIUS;
           s.vy = -Math.abs(s.vy) * BOUNCE;
           s.vx *= 0.8;
+          onGroundedRef.current?.();
         }
         if (s.y - BALL_RADIUS < 0) {
           s.y = BALL_RADIUS;
@@ -97,7 +101,7 @@ export function usePhysics({ width, height, onUpdate }: Options) {
 
   const shoot = useCallback((angle: number, power: number, spin: number) => {
     frozenRef.current = false;
-    const speed = power * 0.28;
+    const speed = power * 0.4;
     const s = stateRef.current;
     s.vx = Math.cos(angle) * speed;
     s.vy = Math.sin(angle) * speed;
