@@ -1,6 +1,7 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
+  Image,
   PanResponder,
   StyleSheet,
   Text,
@@ -8,6 +9,12 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import Svg, {
+  Circle,
+  Ellipse,
+  Path,
+  Rect,
+} from 'react-native-svg';
 import { usePhysics, BallState, BALL_RADIUS } from '../hooks/usePhysics';
 
 type GamePhase = 'juggling' | 'trapped' | 'aiming' | 'shot';
@@ -17,41 +24,141 @@ const GOAL_WIDTH = 220;
 const GOAL_HEIGHT = 100;
 const GK_RADIUS = 18;
 const TRAP_UNLOCK = 5;
+const SHOT_TIMER_SECS = 10;
+
+// Power threshold above which a close-range shot can go over
+const OVER_BAR_POWER_THRESHOLD = 75;
+const OVER_BAR_CLOSE_DISTANCE = 180;
 
 function getGoalkeeperX(width: number, t: number): number {
   return width / 2 + Math.sin(t * 0.001) * (GOAL_WIDTH / 2 - 35);
 }
 
-const BALL_PATCHES = [
-  { x: 0, y: -8 },
-  { x: 8, y: 4 },
-  { x: -8, y: 4 },
-];
 
 function SoccerBall({ x, y }: { x: Animated.Value; y: Animated.Value }) {
   return (
-    <Animated.View style={[styles.ball, { left: x, top: y }]}>
-      {BALL_PATCHES.map((p, i) => (
-        <View key={i} style={[styles.ballPatch, { left: BALL_RADIUS + p.x - 7, top: BALL_RADIUS + p.y - 7 }]} />
-      ))}
-    </Animated.View>
+    <Animated.Image
+      source={require('../../assets/soccerball.png')}
+      style={[styles.ball, { left: x, top: y }]}
+    />
+  );
+}
+
+const GK_WIDTH = 110;
+const GK_HEIGHT = 160;
+
+function GoalkeeperSvg() {
+  return (
+    <Svg width={GK_WIDTH} height={GK_HEIGHT} viewBox="0 0 110 160">
+      {/* Left leg */}
+      <Rect x="28" y="100" width="22" height="34" rx="8" fill="#e8232a"/>
+      <Rect x="29" y="120" width="20" height="20" rx="6" fill="#4ec3f5"/>
+      <Ellipse cx="39" cy="142" rx="16" ry="9" fill="#2255cc"/>
+      {/* Right leg */}
+      <Rect x="60" y="100" width="22" height="34" rx="8" fill="#e8232a"/>
+      <Rect x="61" y="120" width="20" height="20" rx="6" fill="#4ec3f5"/>
+      <Ellipse cx="71" cy="142" rx="16" ry="9" fill="#2255cc"/>
+      {/* Body */}
+      <Rect x="26" y="60" width="58" height="50" rx="12" fill="#f5c800"/>
+      {/* Jersey number */}
+      <Path d="M52 68 L52 98 M46 70 L52 68" stroke="white" strokeWidth="4" strokeLinecap="round"/>
+      {/* Left arm */}
+      <Rect x="0" y="62" width="28" height="18" rx="9" fill="#f5c800"/>
+      {/* Left glove */}
+      <Ellipse cx="8" cy="71" rx="14" ry="12" fill="#2d2d3a"/>
+      <Rect x="0" y="58" width="9" height="16" rx="4" fill="#2d2d3a"/>
+      <Rect x="10" y="55" width="9" height="16" rx="4" fill="#2d2d3a"/>
+      <Rect x="20" y="57" width="9" height="14" rx="4" fill="#2d2d3a"/>
+      {/* Right arm */}
+      <Rect x="82" y="62" width="28" height="18" rx="9" fill="#f5c800"/>
+      {/* Right glove */}
+      <Ellipse cx="102" cy="71" rx="14" ry="12" fill="#2d2d3a"/>
+      <Rect x="101" y="58" width="9" height="16" rx="4" fill="#2d2d3a"/>
+      <Rect x="91" y="55" width="9" height="16" rx="4" fill="#2d2d3a"/>
+      <Rect x="81" y="57" width="9" height="14" rx="4" fill="#2d2d3a"/>
+      {/* Neck */}
+      <Rect x="45" y="44" width="20" height="20" rx="6" fill="#f5a623"/>
+      {/* Head */}
+      <Ellipse cx="55" cy="30" rx="28" ry="30" fill="#f5a623"/>
+      {/* Hair */}
+      <Ellipse cx="55" cy="8" rx="26" ry="14" fill="#8B4513"/>
+      <Ellipse cx="32" cy="18" rx="10" ry="14" fill="#8B4513"/>
+      <Ellipse cx="78" cy="18" rx="10" ry="14" fill="#8B4513"/>
+      <Ellipse cx="42" cy="7" rx="10" ry="8" fill="#a0522d"/>
+      <Ellipse cx="55" cy="4" rx="10" ry="7" fill="#a0522d"/>
+      <Ellipse cx="68" cy="7" rx="9" ry="7" fill="#a0522d"/>
+      {/* Ears */}
+      <Ellipse cx="28" cy="32" rx="6" ry="8" fill="#f5a623"/>
+      <Ellipse cx="82" cy="32" rx="6" ry="8" fill="#f5a623"/>
+      {/* Eyes */}
+      <Ellipse cx="44" cy="30" rx="7" ry="8" fill="white"/>
+      <Ellipse cx="66" cy="30" rx="7" ry="8" fill="white"/>
+      <Ellipse cx="45" cy="31" rx="4" ry="5" fill="#3a7bd5"/>
+      <Ellipse cx="65" cy="31" rx="4" ry="5" fill="#3a7bd5"/>
+      <Ellipse cx="45" cy="31" rx="2" ry="2.5" fill="#111"/>
+      <Ellipse cx="65" cy="31" rx="2" ry="2.5" fill="#111"/>
+      <Ellipse cx="46" cy="29" rx="1.5" ry="1.5" fill="white"/>
+      <Ellipse cx="66" cy="29" rx="1.5" ry="1.5" fill="white"/>
+      {/* Eyebrows */}
+      <Path d="M37 22 Q44 18 51 21" stroke="#6b3a1f" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+      <Path d="M59 21 Q66 18 73 22" stroke="#6b3a1f" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+      {/* Nose */}
+      <Ellipse cx="55" cy="37" rx="4" ry="3" fill="#e8944a"/>
+      {/* Smile */}
+      <Path d="M44 44 Q55 53 66 44" stroke="#c0392b" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+      <Path d="M47 46 Q55 52 63 46" fill="white"/>
+    </Svg>
   );
 }
 
 function Goalkeeper({ x, goalTop }: { x: Animated.Value; goalTop: number }) {
-  const headTop = goalTop - GOAL_HEIGHT + 6;
+  const top = goalTop - GOAL_HEIGHT - GK_HEIGHT + 60;
+  return (
+    <Animated.View style={{ position: 'absolute', top, left: Animated.add(x, new Animated.Value(-GK_WIDTH / 2 + GK_RADIUS)) }}>
+      <GoalkeeperSvg />
+    </Animated.View>
+  );
+}
+
+function PitchMarkings({ width, height, goalTop }: { width: number; height: number; goalTop: number }) {
+  const cx = width / 2;
+  // Place centre line and circle in the lower half of the pitch
+  const centreY = goalTop + (height - goalTop) * 0.45;
+  const circleR = Math.min(width, height) * 0.13;
+  const penBoxW = GOAL_WIDTH + 60;
+  const penBoxH = 90;
+  const penBoxTop = goalTop - 4;
+
   return (
     <>
-      <Animated.View style={[styles.gkArm, { top: headTop + GK_RADIUS * 2 + 4, left: Animated.add(x, new Animated.Value(-22)) }]} />
-      <Animated.View style={[styles.gkArm, { top: headTop + GK_RADIUS * 2 + 4, left: Animated.add(x, new Animated.Value(GK_RADIUS * 2 + 2)) }]} />
-      <Animated.View style={[styles.gkBody, { top: headTop + GK_RADIUS * 2, left: Animated.add(x, new Animated.Value(GK_RADIUS - 12)) }]} />
-      <Animated.View style={[styles.gkLeg, { top: headTop + GK_RADIUS * 2 + 36, left: Animated.add(x, new Animated.Value(GK_RADIUS - 14)) }]} />
-      <Animated.View style={[styles.gkLeg, { top: headTop + GK_RADIUS * 2 + 36, left: Animated.add(x, new Animated.Value(GK_RADIUS + 4)) }]} />
-      <Animated.View style={[styles.gkHead, { top: headTop, left: x }]}>
-        <View style={styles.gkEyeLeft} />
-        <View style={styles.gkEyeRight} />
-        <View style={styles.gkMouth} />
-      </Animated.View>
+      {/* Outer pitch border */}
+      <View style={[styles.pitchLine, { left: 12, top: goalTop - GOAL_HEIGHT - 10, width: width - 24, height: 2 }]} />
+      <View style={[styles.pitchLine, { left: 12, top: height - 16, width: width - 24, height: 2 }]} />
+      <View style={[styles.pitchLine, { left: 12, top: goalTop - GOAL_HEIGHT - 10, width: 2, height: height - goalTop + GOAL_HEIGHT - 6 }]} />
+      <View style={[styles.pitchLine, { left: width - 14, top: goalTop - GOAL_HEIGHT - 10, width: 2, height: height - goalTop + GOAL_HEIGHT - 6 }]} />
+
+      {/* Centre line */}
+      <View style={[styles.pitchLine, { left: 12, top: centreY, width: width - 24, height: 2 }]} />
+
+      {/* Centre circle (drawn as a ring using borderRadius) */}
+      <View style={[styles.pitchCircle, {
+        left: cx - circleR,
+        top: centreY - circleR,
+        width: circleR * 2,
+        height: circleR * 2,
+        borderRadius: circleR,
+      }]} />
+      {/* Centre spot */}
+      <View style={[styles.pitchSpot, { left: cx - 4, top: centreY - 4 }]} />
+
+      {/* Penalty box (top — around goal) */}
+      <View style={[styles.pitchLine, { left: cx - penBoxW / 2, top: penBoxTop, width: penBoxW, height: 2 }]} />
+      <View style={[styles.pitchLine, { left: cx - penBoxW / 2, top: penBoxTop, width: 2, height: penBoxH }]} />
+      <View style={[styles.pitchLine, { left: cx + penBoxW / 2, top: penBoxTop, width: 2, height: penBoxH }]} />
+      <View style={[styles.pitchLine, { left: cx - penBoxW / 2, top: penBoxTop + penBoxH, width: penBoxW, height: 2 }]} />
+
+      {/* Penalty spot */}
+      <View style={[styles.pitchSpot, { left: cx - 4, top: penBoxTop + penBoxH + 20 }]} />
     </>
   );
 }
@@ -76,6 +183,13 @@ export default function GameCanvas() {
   const shotResultRef = useRef(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Shot timer
+  const [shotTimer, setShotTimer] = useState(SHOT_TIMER_SECS);
+  const shotTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Curve spin from touch offset
+  const touchOffsetXRef = useRef(0);
+
   // Boot animation
   const [bootPos, setBootPos] = useState<{ x: number; y: number } | null>(null);
   const bootOpacity = useRef(new Animated.Value(0)).current;
@@ -99,18 +213,28 @@ export default function GameCanvas() {
     setTimeout(() => setMessage(''), ms);
   };
 
+  const stopShotTimer = useCallback(() => {
+    if (shotTimerRef.current) {
+      clearInterval(shotTimerRef.current);
+      shotTimerRef.current = null;
+    }
+    setShotTimer(SHOT_TIMER_SECS);
+  }, []);
+
   const resetAfterShot = useCallback(() => {
+    stopShotTimer();
     releaseBall();
     phaseRef.current = 'juggling';
     setPhase('juggling');
     setJuggleCount(0);
     juggleCountRef.current = 0;
     shotResultRef.current = false;
-  }, []);
+  }, [stopShotTimer]);
 
   const handleUpdate = useCallback((b: BallState) => {
     ballAnimX.setValue(b.x - BALL_RADIUS);
     ballAnimY.setValue(b.y - BALL_RADIUS);
+    // GK keeps moving in ALL phases
     tRef.current += 16;
     const newGkX = getGoalkeeperX(width, tRef.current);
     gkXRef.current = newGkX;
@@ -168,21 +292,62 @@ export default function GameCanvas() {
     showMessage('Trapped! Drag to aim', 2000);
   }, [trapBall]);
 
+  const startShotTimer = useCallback((onExpire: () => void) => {
+    setShotTimer(SHOT_TIMER_SECS);
+    if (shotTimerRef.current) clearInterval(shotTimerRef.current);
+    let remaining = SHOT_TIMER_SECS;
+    shotTimerRef.current = setInterval(() => {
+      remaining -= 1;
+      setShotTimer(remaining);
+      if (remaining <= 0) {
+        stopShotTimer();
+        onExpire();
+      }
+    }, 1000);
+  }, [stopShotTimer]);
+
   const doShoot = useCallback(() => {
+    stopShotTimer();
     shotResultRef.current = false;
-    shoot(aimAngleRef.current, powerRef.current, 0);
+
+    const pos = getBallPos();
+    const ballX = pos?.x ?? width / 2;
+    const goalCentreY = goalTop - GOAL_HEIGHT / 2;
+    const distToGoal = Math.abs((pos?.y ?? 0) - goalCentreY);
+
+    // Curve: spin proportional to how far right/left of ball the touch was
+    // touchOffsetXRef > 0 means touch was to the right → ball curves left (negative spin)
+    const curveSpin = -touchOffsetXRef.current * 0.15;
+
+    // Overshoot: high power + close range tilts the shot upward randomly
+    let finalAngle = aimAngleRef.current;
+    if (powerRef.current >= OVER_BAR_POWER_THRESHOLD && distToGoal < OVER_BAR_CLOSE_DISTANCE) {
+      // Tilt angle upward (more negative y component)
+      finalAngle = finalAngle - (Math.random() * 0.3 + 0.15);
+    }
+
+    shoot(finalAngle, powerRef.current, curveSpin);
     phaseRef.current = 'shot';
     setPhase('shot');
     resetTimerRef.current = setTimeout(() => {
       if (!shotResultRef.current) showMessage('Miss!', 1000);
       resetAfterShot();
     }, 3000);
-  }, [shoot, resetAfterShot]);
+  }, [shoot, resetAfterShot, stopShotTimer, getBallPos, width, goalTop]);
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
+
+      onPanResponderGrant: (evt) => {
+        if (phaseRef.current === 'trapped' || phaseRef.current === 'aiming') {
+          const pos = getBallPos();
+          if (pos) {
+            touchOffsetXRef.current = evt.nativeEvent.locationX - pos.x;
+          }
+        }
+      },
 
       onPanResponderMove: (evt, gs) => {
         if (phaseRef.current === 'trapped' || phaseRef.current === 'aiming') {
@@ -197,8 +362,16 @@ export default function GameCanvas() {
           powerRef.current = pwr;
           setAimAngle(angle);
           setPower(pwr);
-          phaseRef.current = 'aiming';
-          setPhase('aiming');
+
+          if (phaseRef.current === 'trapped') {
+            phaseRef.current = 'aiming';
+            setPhase('aiming');
+            // Start shot timer when player begins aiming
+            startShotTimer(() => {
+              showMessage('Too slow! ⏱', 1000);
+              resetAfterShot();
+            });
+          }
         }
       },
 
@@ -222,6 +395,14 @@ export default function GameCanvas() {
     })
   ).current;
 
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      stopShotTimer();
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    };
+  }, [stopShotTimer]);
+
   // Compute full aim arc from ball to goal
   const aimData = (phase === 'aiming' || phase === 'trapped') ? (() => {
     const pos = getBallPos();
@@ -229,7 +410,6 @@ export default function GameCanvas() {
 
     const dx = Math.cos(aimAngle);
     const dy = Math.sin(aimAngle);
-    // Intersect straight line with goal mouth midpoint
     const targetY = goalTop - GOAL_HEIGHT / 2;
     const t = dy !== 0 ? (targetY - pos.y) / dy : 300;
     const rawX = pos.x + dx * t;
@@ -244,9 +424,13 @@ export default function GameCanvas() {
   })() : null;
 
   const trapUnlocked = juggleCount >= TRAP_UNLOCK;
+  const timerDanger = shotTimer <= 3;
 
   return (
     <View style={[styles.container, { width, height }]} {...panResponder.panHandlers}>
+
+      {/* Pitch markings */}
+      <PitchMarkings width={width} height={height} goalTop={goalTop} />
 
       {/* Goal net */}
       <View style={[styles.goalNet, { left: goalLeft + 6, top: goalTop - GOAL_HEIGHT + 6, width: GOAL_WIDTH - 12, height: GOAL_HEIGHT - 6 }]} />
@@ -291,6 +475,13 @@ export default function GameCanvas() {
         </View>
         <Text style={styles.hudText}>Goals: {score}</Text>
       </View>
+
+      {/* Shot timer */}
+      {phase === 'aiming' && (
+        <View style={[styles.timerBadge, timerDanger && styles.timerBadgeDanger]}>
+          <Text style={[styles.timerText, timerDanger && styles.timerTextDanger]}>{shotTimer}s</Text>
+        </View>
+      )}
 
       {/* Trap button */}
       {phase === 'juggling' && (
@@ -338,39 +529,30 @@ export default function GameCanvas() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#1a6b3c', overflow: 'hidden' },
 
+  // Pitch markings
+  pitchLine: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  pitchCircle: {
+    position: 'absolute',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'transparent',
+  },
+  pitchSpot: {
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+
   ball: {
     position: 'absolute',
     width: BALL_RADIUS * 2,
     height: BALL_RADIUS * 2,
-    borderRadius: BALL_RADIUS,
-    backgroundColor: 'white',
-    borderWidth: 2,
-    borderColor: '#222',
   },
-  ballPatch: {
-    position: 'absolute',
-    width: 14,
-    height: 14,
-    borderRadius: 3,
-    backgroundColor: '#222',
-  },
-
-  // Goalkeeper
-  gkHead: {
-    position: 'absolute',
-    width: GK_RADIUS * 2,
-    height: GK_RADIUS * 2,
-    borderRadius: GK_RADIUS,
-    backgroundColor: '#f5c842',
-    borderWidth: 2,
-    borderColor: '#333',
-  },
-  gkEyeLeft: { position: 'absolute', width: 5, height: 5, borderRadius: 3, backgroundColor: '#333', left: 7, top: 10 },
-  gkEyeRight: { position: 'absolute', width: 5, height: 5, borderRadius: 3, backgroundColor: '#333', right: 7, top: 10 },
-  gkMouth: { position: 'absolute', width: 10, height: 4, borderRadius: 2, backgroundColor: '#c0392b', bottom: 8, left: 9 },
-  gkBody: { position: 'absolute', width: 24, height: 36, borderRadius: 4, backgroundColor: '#cc3333', borderWidth: 1, borderColor: '#333' },
-  gkArm: { position: 'absolute', width: 20, height: 10, borderRadius: 5, backgroundColor: '#f5c842', borderWidth: 1, borderColor: '#333' },
-  gkLeg: { position: 'absolute', width: 10, height: 28, borderRadius: 4, backgroundColor: '#2255cc', borderWidth: 1, borderColor: '#333' },
 
   // Goal
   goalPost: { position: 'absolute', width: 6, backgroundColor: 'white' },
@@ -391,6 +573,19 @@ const styles = StyleSheet.create({
   trapBtnActive: { backgroundColor: '#00cc55', borderColor: '#00ff88' },
   trapBtnLocked: { backgroundColor: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.3)' },
   trapBtnText: { color: 'white', fontWeight: 'bold', fontSize: 13, textAlign: 'center' },
+
+  // Shot timer
+  timerBadge: {
+    position: 'absolute',
+    top: 50,
+    alignSelf: 'center',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  timerBadgeDanger: {},
+  timerText: { color: 'rgba(255,255,255,0.85)', fontSize: 40, fontWeight: 'bold' },
+  timerTextDanger: { color: '#ff4444' },
 
   // HUD
   hud: { position: 'absolute', top: 50, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20 },

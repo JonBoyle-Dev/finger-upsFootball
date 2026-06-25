@@ -4,6 +4,7 @@ export const BALL_RADIUS = 28;
 const GRAVITY = 0.3;
 const DAMPING = 0.995;
 const BOUNCE = 0.38;
+const CURVE_FACTOR = 0.012; // lateral acceleration per unit of spin
 
 export type BallState = {
   x: number;
@@ -43,6 +44,8 @@ export function usePhysics({ width, height, onUpdate, onGrounded }: Options) {
       if (!frozenRef.current) {
         const s = stateRef.current;
         s.vy += GRAVITY;
+        // Spin causes lateral curve (Magnus effect)
+        s.vx += s.spin * CURVE_FACTOR;
         s.vx *= DAMPING;
         s.vy *= DAMPING;
         s.x += s.vx;
