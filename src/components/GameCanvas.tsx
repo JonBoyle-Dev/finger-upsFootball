@@ -15,6 +15,7 @@ const GOALKEEPER_Y_RATIO = 0.18;
 const GOAL_WIDTH = 200;
 const GOAL_HEIGHT = 90;
 const GK_RADIUS = 22;
+const GK_BODY_HEIGHT = 50;
 
 function getGoalkeeperX(width: number, t: number): number {
   return width / 2 + Math.sin(t * 0.001) * (GOAL_WIDTH / 2 - 30);
@@ -23,7 +24,6 @@ function getGoalkeeperX(width: number, t: number): number {
 export default function GameCanvas() {
   const { width, height } = useWindowDimensions();
 
-  const [ball, setBall] = useState<BallState>({ x: width / 2, y: height * 0.4, vx: 0, vy: 0, spin: 0 });
   const phaseRef = useRef<GamePhase>('juggling');
   const [phase, setPhase] = useState<GamePhase>('juggling');
   const [aimAngle, setAimAngle] = useState(-Math.PI / 2);
@@ -35,20 +35,55 @@ export default function GameCanvas() {
   const [message, setMessage] = useState('');
   const gkXRef = useRef(width / 2);
   const tRef = useRef(0);
-  const lastTwoFingerTap = useRef(0);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shotResultRef = useRef(false); // prevent multiple goal triggers
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const ballAnim = useRef(new Animated.ValueXY({ x: width / 2 - BALL_RADIUS, y: height * 0.4 - BALL_RADIUS })).current;
   const gkAnim = useRef(new Animated.Value(width / 2 - GK_RADIUS)).current;
 
+  const goalTop = height * GOALKEEPER_Y_RATIO;
+  const goalLeft = width / 2 - GOAL_WIDTH / 2;
+  const goalRight = width / 2 + GOAL_WIDTH / 2;
+
+  const showMessage = (msg: string, ms = 1200) => {
+    setMessage(msg);
+    setTimeout(() => setMessage(''), ms);
+  };
+
+  const resetAfterShot = useCallback(() => {
+    releaseBall();
+    phaseRef.current = 'juggling';
+    setPhase('juggling');
+    setJuggleCount(0);
+    shotResultRef.current = false;
+  }, []);
+
   const handleUpdate = useCallback((b: BallState) => {
-    setBall(b);
     ballAnim.setValue({ x: b.x - BALL_RADIUS, y: b.y - BALL_RADIUS });
     tRef.current += 16;
     const newGkX = getGoalkeeperX(width, tRef.current);
     gkXRef.current = newGkX;
     gkAnim.setValue(newGkX - GK_RADIUS);
-  }, [width, ballAnim, gkAnim]);
+
+    // Continuous goal detection during shot
+    if (phaseRef.current === 'shot' && !shotResultRef.current) {
+      const inGoalX = b.x > goalLeft && b.x < goalRight;
+      const inGoalY = b.y < goalTop && b.y > goalTop - GOAL_HEIGHT;
+      if (inGoalX && inGoalY) {
+        shotResultRef.current = true;
+        const savedByGk = Math.abs(b.x - gkXRef.current) < 45;
+        if (savedByGk) {
+          showMessage('SAVED!', 1500);
+        } else {
+          setScore(s => s + 1);
+          showMessage('GOAL!', 1500);
+        }
+        if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+        resetTimerRef.current = setTimeout(resetAfterShot, 1500);
+      }
+    }
+  }, [width, ballAnim, gkAnim, goalLeft, goalRight, goalTop, resetAfterShot]);
 
   const { juggle, trapBall, releaseBall, shoot, getBallPos } = usePhysics({
     width,
@@ -58,42 +93,26 @@ export default function GameCanvas() {
       if (phaseRef.current === 'juggling') {
         setJuggleCount(0);
       }
-    }, []),
+      if (phaseRef.current === 'shot' && !shotResultRef.current) {
+        shotResultRef.current = true;
+        showMessage('Miss!', 1000);
+        if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+        resetTimerRef.current = setTimeout(resetAfterShot, 1000);
+      }
+    }, [resetAfterShot]),
   });
 
-  const showMessage = (msg: string, ms = 1200) => {
-    setMessage(msg);
-    setTimeout(() => setMessage(''), ms);
-  };
-
   const doShoot = useCallback(() => {
+    shotResultRef.current = false;
     shoot(aimAngleRef.current, powerRef.current, 0);
     phaseRef.current = 'shot';
     setPhase('shot');
-    setTimeout(() => {
-      const p = getBallPos();
-      if (p) {
-        const goalTop = height * GOALKEEPER_Y_RATIO;
-        const goalLeft = width / 2 - GOAL_WIDTH / 2;
-        const goalRight = width / 2 + GOAL_WIDTH / 2;
-        const inGoalX = p.x > goalLeft && p.x < goalRight;
-        const inGoalY = p.y < goalTop && p.y > goalTop - GOAL_HEIGHT;
-        const savedByGk = Math.abs(p.x - gkXRef.current) < 40;
-        if (inGoalX && inGoalY && !savedByGk) {
-          setScore(s => s + 1);
-          showMessage('GOAL!', 1500);
-        } else if (inGoalX && inGoalY && savedByGk) {
-          showMessage('SAVED!', 1500);
-        } else {
-          showMessage('Miss!', 1000);
-        }
-      }
-      releaseBall();
-      phaseRef.current = 'juggling';
-      setPhase('juggling');
-      setJuggleCount(0);
-    }, 2500);
-  }, [shoot, getBallPos, releaseBall, height, width]);
+    // Fallback reset if ball never reaches goal
+    resetTimerRef.current = setTimeout(() => {
+      if (!shotResultRef.current) showMessage('Miss!', 1000);
+      resetAfterShot();
+    }, 3000);
+  }, [shoot, resetAfterShot]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -148,9 +167,6 @@ export default function GameCanvas() {
     })
   ).current;
 
-  const goalTop = height * GOALKEEPER_Y_RATIO;
-  const goalLeft = width / 2 - GOAL_WIDTH / 2;
-
   const aimDots = phase === 'aiming' ? (() => {
     const pos = getBallPos();
     if (!pos) return [];
@@ -167,19 +183,28 @@ export default function GameCanvas() {
 
   return (
     <View style={[styles.container, { width, height }]} {...panResponder.panHandlers}>
+
+      {/* Goal net */}
+      <View style={[styles.goalNet, { left: goalLeft + 5, top: goalTop - GOAL_HEIGHT + 5, width: GOAL_WIDTH - 10, height: GOAL_HEIGHT - 5 }]} />
+      {/* Goal posts */}
       <View style={[styles.goalPost, { left: goalLeft - 3, top: goalTop - GOAL_HEIGHT, height: GOAL_HEIGHT }]} />
       <View style={[styles.goalPost, { left: goalLeft + GOAL_WIDTH - 3, top: goalTop - GOAL_HEIGHT, height: GOAL_HEIGHT }]} />
       <View style={[styles.goalCrossbar, { left: goalLeft, top: goalTop - GOAL_HEIGHT, width: GOAL_WIDTH }]} />
-      <View style={[styles.goalNet, { left: goalLeft + 5, top: goalTop - GOAL_HEIGHT + 5, width: GOAL_WIDTH - 10, height: GOAL_HEIGHT - 5 }]} />
 
+      {/* Goalkeeper body */}
+      <Animated.View style={[styles.gkBody, { top: goalTop - GOAL_HEIGHT / 2 - GK_RADIUS + GK_RADIUS * 2, left: Animated.add(gkAnim, new Animated.Value(GK_RADIUS - 14)) }]} />
+      {/* Goalkeeper head */}
       <Animated.View style={[styles.goalkeeper, { top: goalTop - GOAL_HEIGHT / 2 - GK_RADIUS, left: gkAnim }]} />
 
+      {/* Aim dots */}
       {aimDots.map(d => (
         <View key={d.key} style={[styles.aimDot, { left: d.x - 4, top: d.y - 4 }]} />
       ))}
 
+      {/* Ball */}
       <Animated.View style={[styles.ball, { left: ballAnim.x, top: ballAnim.y }]} />
 
+      {/* HUD */}
       <View style={styles.hud}>
         <Text style={styles.hudText}>Juggles: {juggleCount}</Text>
         <Text style={styles.hudText}>Goals: {score}</Text>
@@ -200,7 +225,7 @@ export default function GameCanvas() {
       {phase === 'juggling' && juggleCount === 0 && (
         <View style={styles.instructions}>
           <Text style={styles.instructText}>Tap near the ball to juggle</Text>
-          <Text style={styles.instructText}>Hold finger to trap</Text>
+          <Text style={styles.instructText}>Hold to trap, drag to aim, tap to shoot</Text>
         </View>
       )}
     </View>
@@ -223,9 +248,18 @@ const styles = StyleSheet.create({
     width: GK_RADIUS * 2,
     height: GK_RADIUS * 2,
     borderRadius: GK_RADIUS,
-    backgroundColor: '#e8b84b',
-    borderWidth: 3,
-    borderColor: '#cc3333',
+    backgroundColor: '#f5c842',
+    borderWidth: 2,
+    borderColor: '#333',
+  },
+  gkBody: {
+    position: 'absolute',
+    width: 28,
+    height: GK_BODY_HEIGHT,
+    borderRadius: 6,
+    backgroundColor: '#cc3333',
+    borderWidth: 2,
+    borderColor: '#333',
   },
   goalPost: { position: 'absolute', width: 6, backgroundColor: 'white' },
   goalCrossbar: { position: 'absolute', height: 6, backgroundColor: 'white' },
@@ -233,7 +267,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.25)',
   },
   aimDot: {
     position: 'absolute',
