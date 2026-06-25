@@ -22,7 +22,8 @@ const GOALKEEPER_Y_RATIO = 0.2;
 const GOAL_WIDTH = 220;
 const GOAL_HEIGHT = 100;
 const GK_RADIUS = 18;
-const TRAP_UNLOCK = 5;
+const TRAP_UNLOCK_BASE = 5;
+const TRAP_UNLOCK_INCREMENT = 5;
 const SHOT_TIMER_SECS = 10;
 
 const OVER_BAR_POWER_THRESHOLD = 75;
@@ -211,7 +212,7 @@ function PitchMarkings({ width, height, goalTop }: { width: number; height: numb
       <View style={[styles.pitchLine, { left: cx - penBoxW / 2, top: penBoxTop, width: 2, height: penBoxH }]} />
       <View style={[styles.pitchLine, { left: cx + penBoxW / 2, top: penBoxTop, width: 2, height: penBoxH }]} />
       <View style={[styles.pitchLine, { left: cx - penBoxW / 2, top: penBoxTop + penBoxH, width: penBoxW, height: 2 }]} />
-      <View style={[styles.pitchSpot, { left: cx - 4, top: penBoxTop + penBoxH + 20 }]} />
+      <View style={[styles.pitchSpot, { left: cx - 4, top: penBoxTop + penBoxH * 0.55 }]} />
     </>
   );
 }
@@ -228,6 +229,7 @@ export default function GameCanvas() {
   const [curveSpin, setCurveSpin] = useState(0);
   const curveSpinRef = useRef(0);
   const [score, setScore] = useState(0);
+  const [trapUnlockTarget, setTrapUnlockTarget] = useState(TRAP_UNLOCK_BASE);
   const [juggleCount, setJuggleCount] = useState(0);
   const juggleCountRef = useRef(0);
   const [bestJuggles, setBestJuggles] = useState(0);
@@ -302,13 +304,15 @@ export default function GameCanvas() {
     setShotTimer(SHOT_TIMER_SECS);
   }, []);
 
-  const resetAfterShot = useCallback(() => {
+  const resetAfterShot = useCallback((keepJuggles = false) => {
     stopShotTimer();
     releaseBall();
     phaseRef.current = 'juggling';
     setPhase('juggling');
-    setJuggleCount(0);
-    juggleCountRef.current = 0;
+    if (!keepJuggles) {
+      setJuggleCount(0);
+      juggleCountRef.current = 0;
+    }
     shotResultRef.current = false;
     setCurveSpin(0);
     curveSpinRef.current = 0;
@@ -347,12 +351,13 @@ export default function GameCanvas() {
           resetTimerRef.current = setTimeout(resetAfterShot, 1500);
         } else {
           setScore(s => s + 1);
+          setTrapUnlockTarget(t => t + TRAP_UNLOCK_INCREMENT);
           setCelebration(true);
           trapBallRef.current();
           if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
           resetTimerRef.current = setTimeout(() => {
             setCelebration(false);
-            resetAfterShot();
+            resetAfterShot(true); // keep juggle count after scoring
           }, 2200);
         }
       }
@@ -380,7 +385,7 @@ export default function GameCanvas() {
   trapBallRef.current = trapBall;
 
   const doTrap = useCallback(() => {
-    if (juggleCountRef.current < TRAP_UNLOCK) return;
+    if (juggleCountRef.current < trapUnlockTarget) return;
     trapBall();
     phaseRef.current = 'trapped';
     setPhase('trapped');
@@ -529,7 +534,7 @@ export default function GameCanvas() {
     return { dots, targetX, clear, hitsWall };
   })() : null;
 
-  const trapUnlocked = juggleCount >= TRAP_UNLOCK;
+  const trapUnlocked = juggleCount >= trapUnlockTarget;
   const timerDanger = shotTimer <= 3;
   const showWall = phase === 'aiming' || phase === 'trapped' || phase === 'shot';
 
@@ -584,11 +589,13 @@ export default function GameCanvas() {
 
       {/* HUD */}
       <View style={styles.hud}>
-        <View>
-          <Text style={styles.hudText}>Juggles: {juggleCount}</Text>
+        <View style={styles.hudPill}>
+          <Text style={styles.hudText}>⚽ {juggleCount}/{trapUnlockTarget}</Text>
           <Text style={styles.hudSubText}>Best: {bestJuggles}</Text>
         </View>
-        <Text style={styles.hudText}>Goals: {score}</Text>
+        <View style={styles.hudPill}>
+          <Text style={styles.hudText}>Goals: {score}</Text>
+        </View>
       </View>
 
       {/* Shot timer */}
@@ -606,7 +613,7 @@ export default function GameCanvas() {
           disabled={!trapUnlocked}
         >
           <Text style={styles.trapBtnText}>
-            {trapUnlocked ? 'TRAP' : `TRAP\n${juggleCount}/${TRAP_UNLOCK}`}
+            {trapUnlocked ? 'TRAP' : `TRAP\n${juggleCount}/${trapUnlockTarget}`}
           </Text>
         </TouchableOpacity>
       )}
@@ -704,9 +711,10 @@ const styles = StyleSheet.create({
   curveLabelTitle: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: '700', letterSpacing: 2 },
   curveLabelValue: { color: '#00eeff', fontSize: 14, fontWeight: 'bold' },
 
-  hud: { position: 'absolute', top: 50, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20 },
-  hudText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-  hudSubText: { color: 'rgba(255,255,255,0.7)', fontSize: 13 },
+  hud: { position: 'absolute', top: 12, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12 },
+  hudPill: { backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  hudText: { color: '#FFD700', fontSize: 14, fontWeight: 'bold' },
+  hudSubText: { color: 'rgba(255,255,255,0.75)', fontSize: 11 },
   hint: { position: 'absolute', bottom: 60, left: 0, right: 0, alignItems: 'center' },
   hintText: { color: 'yellow', fontSize: 16, fontWeight: '600' },
   messageBanner: { position: 'absolute', top: '40%', left: 0, right: 0, alignItems: 'center' },
