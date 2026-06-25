@@ -70,6 +70,7 @@ export default function GameCanvas() {
   const juggleCountRef = useRef(0);
   const [bestJuggles, setBestJuggles] = useState(0);
   const [message, setMessage] = useState('');
+  const [celebration, setCelebration] = useState(false);
   const gkXRef = useRef(width / 2);
   const tRef = useRef(0);
   const shotResultRef = useRef(false);
@@ -87,6 +88,7 @@ export default function GameCanvas() {
   const ballAnimX = useRef(new Animated.Value(width / 2 - BALL_RADIUS)).current;
   const ballAnimY = useRef(new Animated.Value(height * 0.4 - BALL_RADIUS)).current;
   const gkAnim = useRef(new Animated.Value(width / 2 - GK_RADIUS)).current;
+  const trapBallRef = useRef<() => void>(() => {});
 
   const goalTop = height * GOALKEEPER_Y_RATIO;
   const goalLeft = width / 2 - GOAL_WIDTH / 2;
@@ -122,12 +124,18 @@ export default function GameCanvas() {
         const savedByGk = Math.abs(b.x - gkXRef.current) < GK_RADIUS + BALL_RADIUS + 8;
         if (savedByGk) {
           showMessage('SAVED! 🧤', 1500);
+          if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+          resetTimerRef.current = setTimeout(resetAfterShot, 1500);
         } else {
           setScore(s => s + 1);
-          showMessage('GOAL! ⚽', 1500);
+          setCelebration(true);
+          trapBallRef.current();
+          if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+          resetTimerRef.current = setTimeout(() => {
+            setCelebration(false);
+            resetAfterShot();
+          }, 2200);
         }
-        if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-        resetTimerRef.current = setTimeout(resetAfterShot, 1500);
       }
     }
   }, [width, ballAnimX, ballAnimY, gkAnim, goalLeft, goalRight, goalTop, resetAfterShot]);
@@ -149,6 +157,8 @@ export default function GameCanvas() {
       }
     }, [resetAfterShot]),
   });
+
+  trapBallRef.current = trapBall;
 
   const doTrap = useCallback(() => {
     if (juggleCountRef.current < TRAP_UNLOCK) return;
@@ -217,29 +227,20 @@ export default function GameCanvas() {
     const pos = getBallPos();
     if (!pos) return { dots: [], targetX: width / 2, clear: true };
 
-    const vx = Math.cos(aimAngle) * power * 0.4;
-    const vy = Math.sin(aimAngle) * power * 0.4;
-    const gravity = 0.3;
-    const dots: { x: number; y: number; key: number }[] = [];
-    let px = pos.x, py = pos.y, pvx = vx, pvy = vy;
-    let targetX = pos.x;
-    let hitGoal = false;
-
-    for (let i = 0; i < 120; i++) {
-      pvy += gravity;
-      px += pvx;
-      py += pvy;
-      if (i % 5 === 0) dots.push({ x: px, y: py, key: i });
-      // Check if trajectory crosses goal mouth
-      if (!hitGoal && py < goalTop && py > goalTop - GOAL_HEIGHT && px > goalLeft && px < goalRight) {
-        targetX = px;
-        hitGoal = true;
-      }
-      if (py < 0 || py > height || px < 0 || px > width) break;
-    }
-
-    const clear = hitGoal && Math.abs(targetX - gkXRef.current) > GK_RADIUS + BALL_RADIUS + 4;
-    return { dots, targetX, clear, hitGoal };
+    const dx = Math.cos(aimAngle);
+    const dy = Math.sin(aimAngle);
+    // Intersect straight line with goal mouth midpoint
+    const targetY = goalTop - GOAL_HEIGHT / 2;
+    const t = dy !== 0 ? (targetY - pos.y) / dy : 300;
+    const rawX = pos.x + dx * t;
+    const targetX = Math.max(goalLeft + 10, Math.min(goalRight - 10, rawX));
+    const NUM_DOTS = 10;
+    const dots = Array.from({ length: NUM_DOTS }, (_, i) => {
+      const f = (i + 1) / (NUM_DOTS + 1);
+      return { x: pos.x + (targetX - pos.x) * f, y: pos.y + (targetY - pos.y) * f, key: i };
+    });
+    const clear = Math.abs(targetX - gkXRef.current) > GK_RADIUS + BALL_RADIUS + 4;
+    return { dots, targetX, clear, hitGoal: true };
   })() : null;
 
   const trapUnlocked = juggleCount >= TRAP_UNLOCK;
@@ -263,10 +264,10 @@ export default function GameCanvas() {
       ))}
 
       {/* Goal target marker */}
-      {aimData && aimData.hitGoal && (
+      {aimData && (
         <View style={[
           styles.goalMarker,
-          { left: aimData.targetX - 8, top: goalTop - GOAL_HEIGHT - 4 },
+          { left: aimData.targetX - 8, top: goalTop - GOAL_HEIGHT / 2 - 8 },
           { backgroundColor: aimData.clear ? '#00ff88' : '#ff4444' },
         ]} />
       )}
@@ -310,9 +311,17 @@ export default function GameCanvas() {
         </View>
       )}
 
-      {!!message && (
+      {!!message && !celebration && (
         <View style={styles.messageBanner}>
           <Text style={styles.messageText}>{message}</Text>
+        </View>
+      )}
+
+      {celebration && (
+        <View style={styles.celebrationOverlay}>
+          <Text style={styles.celebrationTrophy}>🏆</Text>
+          <Text style={styles.celebrationText}>GOAL!</Text>
+          <Text style={styles.celebrationSub}>Score: {score}</Text>
         </View>
       )}
 
@@ -391,6 +400,10 @@ const styles = StyleSheet.create({
   hintText: { color: 'yellow', fontSize: 16, fontWeight: '600' },
   messageBanner: { position: 'absolute', top: '40%', left: 0, right: 0, alignItems: 'center' },
   messageText: { color: 'white', fontSize: 36, fontWeight: 'bold' },
+  celebrationOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.45)' },
+  celebrationTrophy: { fontSize: 80 },
+  celebrationText: { color: '#FFD700', fontSize: 72, fontWeight: 'bold', letterSpacing: 4 },
+  celebrationSub: { color: 'white', fontSize: 28, marginTop: 8 },
   instructions: { position: 'absolute', bottom: 80, left: 0, right: 0, alignItems: 'center', gap: 6 },
   instructText: { color: 'rgba(255,255,255,0.7)', fontSize: 14, textAlign: 'center' },
 });
