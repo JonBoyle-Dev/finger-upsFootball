@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useEffect } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   Animated,
   PanResponder,
@@ -11,14 +11,57 @@ import { usePhysics, BallState, BALL_RADIUS } from '../hooks/usePhysics';
 
 type GamePhase = 'juggling' | 'trapped' | 'aiming' | 'shot';
 
-const GOALKEEPER_Y_RATIO = 0.18;
-const GOAL_WIDTH = 200;
-const GOAL_HEIGHT = 90;
-const GK_RADIUS = 22;
-const GK_BODY_HEIGHT = 50;
+const GOALKEEPER_Y_RATIO = 0.2;
+const GOAL_WIDTH = 220;
+const GOAL_HEIGHT = 100;
+const GK_RADIUS = 18;
 
 function getGoalkeeperX(width: number, t: number): number {
-  return width / 2 + Math.sin(t * 0.001) * (GOAL_WIDTH / 2 - 30);
+  return width / 2 + Math.sin(t * 0.001) * (GOAL_WIDTH / 2 - 35);
+}
+
+// Soccer ball patches (simplified hexagon positions)
+const BALL_PATCHES = [
+  { x: 0, y: -8 },
+  { x: 8, y: 4 },
+  { x: -8, y: 4 },
+];
+
+function SoccerBall({ x, y }: { x: Animated.Value; y: Animated.Value }) {
+  const d = BALL_RADIUS * 2;
+  return (
+    <Animated.View style={[styles.ball, { left: x, top: y }]}>
+      {BALL_PATCHES.map((p, i) => (
+        <View key={i} style={[styles.ballPatch, { left: BALL_RADIUS + p.x - 7, top: BALL_RADIUS + p.y - 7 }]} />
+      ))}
+    </Animated.View>
+  );
+}
+
+function Goalkeeper({ x, goalTop }: { x: Animated.Value; goalTop: number }) {
+  const headTop = goalTop - GOAL_HEIGHT / 2 - GK_RADIUS * 2 - 10;
+  return (
+    <>
+      {/* Left arm */}
+      <Animated.View style={[styles.gkArm, { top: headTop + GK_RADIUS * 2 + 8, left: Animated.add(x, new Animated.Value(-22)) }]} />
+      {/* Right arm */}
+      <Animated.View style={[styles.gkArm, { top: headTop + GK_RADIUS * 2 + 8, left: Animated.add(x, new Animated.Value(GK_RADIUS * 2 + 2)) }]} />
+      {/* Body */}
+      <Animated.View style={[styles.gkBody, { top: headTop + GK_RADIUS * 2, left: Animated.add(x, new Animated.Value(GK_RADIUS - 12)) }]} />
+      {/* Left leg */}
+      <Animated.View style={[styles.gkLeg, { top: headTop + GK_RADIUS * 2 + 38, left: Animated.add(x, new Animated.Value(GK_RADIUS - 16)) }]} />
+      {/* Right leg */}
+      <Animated.View style={[styles.gkLeg, { top: headTop + GK_RADIUS * 2 + 38, left: Animated.add(x, new Animated.Value(GK_RADIUS + 2)) }]} />
+      {/* Head */}
+      <Animated.View style={[styles.gkHead, { top: headTop, left: x }]}>
+        {/* Eyes */}
+        <View style={styles.gkEyeLeft} />
+        <View style={styles.gkEyeRight} />
+        {/* Mouth */}
+        <View style={styles.gkMouth} />
+      </Animated.View>
+    </>
+  );
 }
 
 export default function GameCanvas() {
@@ -35,7 +78,6 @@ export default function GameCanvas() {
   const [message, setMessage] = useState('');
   const gkXRef = useRef(width / 2);
   const tRef = useRef(0);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shotResultRef = useRef(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -48,7 +90,8 @@ export default function GameCanvas() {
     Animated.timing(legOpacity, { toValue: 0, duration: 350, useNativeDriver: true }).start();
   }, [legOpacity]);
 
-  const ballAnim = useRef(new Animated.ValueXY({ x: width / 2 - BALL_RADIUS, y: height * 0.4 - BALL_RADIUS })).current;
+  const ballAnimX = useRef(new Animated.Value(width / 2 - BALL_RADIUS)).current;
+  const ballAnimY = useRef(new Animated.Value(height * 0.4 - BALL_RADIUS)).current;
   const gkAnim = useRef(new Animated.Value(width / 2 - GK_RADIUS)).current;
 
   const goalTop = height * GOALKEEPER_Y_RATIO;
@@ -69,30 +112,30 @@ export default function GameCanvas() {
   }, []);
 
   const handleUpdate = useCallback((b: BallState) => {
-    ballAnim.setValue({ x: b.x - BALL_RADIUS, y: b.y - BALL_RADIUS });
+    ballAnimX.setValue(b.x - BALL_RADIUS);
+    ballAnimY.setValue(b.y - BALL_RADIUS);
     tRef.current += 16;
     const newGkX = getGoalkeeperX(width, tRef.current);
     gkXRef.current = newGkX;
     gkAnim.setValue(newGkX - GK_RADIUS);
 
-    // Continuous goal detection during shot
     if (phaseRef.current === 'shot' && !shotResultRef.current) {
-      const inGoalX = b.x > goalLeft && b.x < goalRight;
-      const inGoalY = b.y < goalTop && b.y > goalTop - GOAL_HEIGHT;
+      const inGoalX = b.x > goalLeft + 6 && b.x < goalRight - 6;
+      const inGoalY = b.y + BALL_RADIUS > goalTop - GOAL_HEIGHT && b.y - BALL_RADIUS < goalTop;
       if (inGoalX && inGoalY) {
         shotResultRef.current = true;
-        const savedByGk = Math.abs(b.x - gkXRef.current) < 45;
+        const savedByGk = Math.abs(b.x - gkXRef.current) < GK_RADIUS + BALL_RADIUS + 8;
         if (savedByGk) {
-          showMessage('SAVED!', 1500);
+          showMessage('SAVED! 🧤', 1500);
         } else {
           setScore(s => s + 1);
-          showMessage('GOAL!', 1500);
+          showMessage('GOAL! ⚽', 1500);
         }
         if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
         resetTimerRef.current = setTimeout(resetAfterShot, 1500);
       }
     }
-  }, [width, ballAnim, gkAnim, goalLeft, goalRight, goalTop, resetAfterShot]);
+  }, [width, ballAnimX, ballAnimY, gkAnim, goalLeft, goalRight, goalTop, resetAfterShot]);
 
   const { juggle, trapBall, releaseBall, shoot, getBallPos } = usePhysics({
     width,
@@ -116,7 +159,6 @@ export default function GameCanvas() {
     shoot(aimAngleRef.current, powerRef.current, 0);
     phaseRef.current = 'shot';
     setPhase('shot');
-    // Fallback reset if ball never reaches goal
     resetTimerRef.current = setTimeout(() => {
       if (!shotResultRef.current) showMessage('Miss!', 1000);
       resetAfterShot();
@@ -157,13 +199,8 @@ export default function GameCanvas() {
       },
 
       onPanResponderRelease: (evt, gs) => {
-        if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-        }
         const isSmallMove = Math.abs(gs.dx) < 12 && Math.abs(gs.dy) < 12;
         if (!isSmallMove) return;
-
         if (phaseRef.current === 'juggling') {
           const { locationX, locationY } = evt.nativeEvent;
           juggle(locationX, locationY);
@@ -194,16 +231,14 @@ export default function GameCanvas() {
     <View style={[styles.container, { width, height }]} {...panResponder.panHandlers}>
 
       {/* Goal net */}
-      <View style={[styles.goalNet, { left: goalLeft + 5, top: goalTop - GOAL_HEIGHT + 5, width: GOAL_WIDTH - 10, height: GOAL_HEIGHT - 5 }]} />
+      <View style={[styles.goalNet, { left: goalLeft + 6, top: goalTop - GOAL_HEIGHT + 6, width: GOAL_WIDTH - 12, height: GOAL_HEIGHT - 6 }]} />
       {/* Goal posts */}
-      <View style={[styles.goalPost, { left: goalLeft - 3, top: goalTop - GOAL_HEIGHT, height: GOAL_HEIGHT }]} />
-      <View style={[styles.goalPost, { left: goalLeft + GOAL_WIDTH - 3, top: goalTop - GOAL_HEIGHT, height: GOAL_HEIGHT }]} />
-      <View style={[styles.goalCrossbar, { left: goalLeft, top: goalTop - GOAL_HEIGHT, width: GOAL_WIDTH }]} />
+      <View style={[styles.goalPost, { left: goalLeft - 4, top: goalTop - GOAL_HEIGHT, height: GOAL_HEIGHT }]} />
+      <View style={[styles.goalPost, { left: goalLeft + GOAL_WIDTH - 2, top: goalTop - GOAL_HEIGHT, height: GOAL_HEIGHT }]} />
+      <View style={[styles.goalCrossbar, { left: goalLeft - 4, top: goalTop - GOAL_HEIGHT, width: GOAL_WIDTH + 4 }]} />
 
-      {/* Goalkeeper body */}
-      <Animated.View style={[styles.gkBody, { top: goalTop - GOAL_HEIGHT / 2 - GK_RADIUS + GK_RADIUS * 2, left: Animated.add(gkAnim, new Animated.Value(GK_RADIUS - 14)) }]} />
-      {/* Goalkeeper head */}
-      <Animated.View style={[styles.goalkeeper, { top: goalTop - GOAL_HEIGHT / 2 - GK_RADIUS, left: gkAnim }]} />
+      {/* Goalkeeper */}
+      <Goalkeeper x={gkAnim} goalTop={goalTop} />
 
       {/* Aim dots */}
       {aimDots.map(d => (
@@ -212,15 +247,15 @@ export default function GameCanvas() {
 
       {/* Leg kick */}
       {legPos && (
-        <Animated.View style={[styles.leg, { left: legPos.x - 18, top: legPos.y - 36, opacity: legOpacity }]}>
+        <Animated.View style={[styles.leg, { left: legPos.x - 18, top: legPos.y - 40, opacity: legOpacity }]}>
           <View style={styles.legUpper} />
           <View style={styles.legLower} />
           <View style={styles.legBoot} />
         </Animated.View>
       )}
 
-      {/* Ball */}
-      <Animated.View style={[styles.ball, { left: ballAnim.x, top: ballAnim.y }]} />
+      {/* Soccer ball */}
+      <SoccerBall x={ballAnimX} y={ballAnimY} />
 
       {/* HUD */}
       <View style={styles.hud}>
@@ -243,7 +278,7 @@ export default function GameCanvas() {
       {phase === 'juggling' && juggleCount === 0 && (
         <View style={styles.instructions}>
           <Text style={styles.instructText}>Tap near the ball to juggle</Text>
-          <Text style={styles.instructText}>Hold to trap, drag to aim, tap to shoot</Text>
+          <Text style={styles.instructText}>Two fingers to trap • drag to aim • tap to shoot</Text>
         </View>
       )}
     </View>
@@ -252,16 +287,27 @@ export default function GameCanvas() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#1a6b3c', overflow: 'hidden' },
+
+  // Soccer ball
   ball: {
     position: 'absolute',
     width: BALL_RADIUS * 2,
     height: BALL_RADIUS * 2,
     borderRadius: BALL_RADIUS,
-    backgroundColor: '#f5a623',
+    backgroundColor: 'white',
     borderWidth: 2,
-    borderColor: '#c8861a',
+    borderColor: '#222',
   },
-  goalkeeper: {
+  ballPatch: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 3,
+    backgroundColor: '#222',
+  },
+
+  // Goalkeeper
+  gkHead: {
     position: 'absolute',
     width: GK_RADIUS * 2,
     height: GK_RADIUS * 2,
@@ -269,49 +315,66 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5c842',
     borderWidth: 2,
     borderColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
+  gkEyeLeft: { position: 'absolute', width: 5, height: 5, borderRadius: 3, backgroundColor: '#333', left: 7, top: 10 },
+  gkEyeRight: { position: 'absolute', width: 5, height: 5, borderRadius: 3, backgroundColor: '#333', right: 7, top: 10 },
+  gkMouth: { position: 'absolute', width: 10, height: 4, borderRadius: 2, backgroundColor: '#c0392b', bottom: 8 },
   gkBody: {
     position: 'absolute',
-    width: 28,
-    height: GK_BODY_HEIGHT,
-    borderRadius: 6,
+    width: 24,
+    height: 36,
+    borderRadius: 4,
     backgroundColor: '#cc3333',
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: '#333',
   },
+  gkArm: {
+    position: 'absolute',
+    width: 20,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#f5c842',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  gkLeg: {
+    position: 'absolute',
+    width: 10,
+    height: 28,
+    borderRadius: 4,
+    backgroundColor: '#2255cc',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+
+  // Goal
   goalPost: { position: 'absolute', width: 6, backgroundColor: 'white' },
   goalCrossbar: { position: 'absolute', height: 6, backgroundColor: 'white' },
   goalNet: {
     position: 'absolute',
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.07)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: 'rgba(255,255,255,0.3)',
   },
-  aimDot: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,100,0.7)',
-  },
-  hud: {
-    position: 'absolute',
-    top: 50,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-  },
+
+  // Aim
+  aimDot: { position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,100,0.7)' },
+
+  // Leg
+  leg: { position: 'absolute', alignItems: 'center' },
+  legUpper: { width: 10, height: 18, backgroundColor: '#fff', borderRadius: 4 },
+  legLower: { width: 10, height: 16, backgroundColor: '#f5c842', borderRadius: 4, marginTop: 1 },
+  legBoot: { width: 18, height: 10, backgroundColor: '#222', borderRadius: 4, marginTop: 1, marginLeft: 4 },
+
+  // HUD
+  hud: { position: 'absolute', top: 50, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20 },
   hudText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
   hint: { position: 'absolute', bottom: 60, left: 0, right: 0, alignItems: 'center' },
   hintText: { color: 'yellow', fontSize: 16, fontWeight: '600' },
   messageBanner: { position: 'absolute', top: '40%', left: 0, right: 0, alignItems: 'center' },
   messageText: { color: 'white', fontSize: 36, fontWeight: 'bold' },
   instructions: { position: 'absolute', bottom: 80, left: 0, right: 0, alignItems: 'center', gap: 6 },
-  instructText: { color: 'rgba(255,255,255,0.7)', fontSize: 14 },
-  leg: { position: 'absolute', alignItems: 'center' },
-  legUpper: { width: 10, height: 18, backgroundColor: '#fff', borderRadius: 4 },
-  legLower: { width: 10, height: 16, backgroundColor: '#f5c842', borderRadius: 4, marginTop: 1 },
-  legBoot: { width: 18, height: 10, backgroundColor: '#222', borderRadius: 4, marginTop: 1, marginLeft: 4 },
+  instructText: { color: 'rgba(255,255,255,0.7)', fontSize: 14, textAlign: 'center' },
 });
