@@ -42,10 +42,9 @@ export function usePhysics({ width, height, onUpdate, onGrounded }: Options) {
     stateRef.current = { x: width / 2, y: height * 0.4, vx: 0, vy: 0, spin: 0 };
 
     function loop() {
+      const s = stateRef.current;
       if (!frozenRef.current) {
-        const s = stateRef.current;
         s.vy += GRAVITY;
-        // Spin causes lateral curve (Magnus effect)
         s.vx += s.spin * CURVE_FACTOR;
         s.vx *= DAMPING;
         s.vy *= DAMPING;
@@ -72,9 +71,9 @@ export function usePhysics({ width, height, onUpdate, onGrounded }: Options) {
           s.x = width - BALL_RADIUS;
           s.vx = -Math.abs(s.vx) * BOUNCE;
         }
-
-        onUpdateRef.current({ ...s });
       }
+      // Always call onUpdate so GK keeps moving even when ball is frozen
+      onUpdateRef.current({ ...s });
       rafRef.current = requestAnimationFrame(loop);
     }
 
