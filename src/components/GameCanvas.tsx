@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState, useEffect } from 'react';
 import {
   Animated,
   PanResponder,
@@ -36,8 +36,17 @@ export default function GameCanvas() {
   const gkXRef = useRef(width / 2);
   const tRef = useRef(0);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const shotResultRef = useRef(false); // prevent multiple goal triggers
+  const shotResultRef = useRef(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Leg kick animation
+  const [legPos, setLegPos] = useState<{ x: number; y: number } | null>(null);
+  const legOpacity = useRef(new Animated.Value(0)).current;
+  const showLeg = useCallback((x: number, y: number) => {
+    setLegPos({ x, y });
+    legOpacity.setValue(1);
+    Animated.timing(legOpacity, { toValue: 0, duration: 350, useNativeDriver: true }).start();
+  }, [legOpacity]);
 
   const ballAnim = useRef(new Animated.ValueXY({ x: width / 2 - BALL_RADIUS, y: height * 0.4 - BALL_RADIUS })).current;
   const gkAnim = useRef(new Animated.Value(width / 2 - GK_RADIUS)).current;
@@ -119,14 +128,13 @@ export default function GameCanvas() {
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
 
-      onPanResponderGrant: () => {
-        if (phaseRef.current === 'juggling') {
-          longPressTimer.current = setTimeout(() => {
-            trapBall();
-            phaseRef.current = 'trapped';
-            setPhase('trapped');
-            showMessage('Trapped! Drag to aim', 2000);
-          }, 500);
+      onPanResponderGrant: (evt) => {
+        const { touches } = evt.nativeEvent;
+        if (touches.length >= 2 && phaseRef.current === 'juggling') {
+          trapBall();
+          phaseRef.current = 'trapped';
+          setPhase('trapped');
+          showMessage('Trapped! Drag to aim', 2000);
         }
       },
 
@@ -159,6 +167,7 @@ export default function GameCanvas() {
         if (phaseRef.current === 'juggling') {
           const { locationX, locationY } = evt.nativeEvent;
           juggle(locationX, locationY);
+          showLeg(locationX, locationY);
           setJuggleCount(c => c + 1);
         } else if (phaseRef.current === 'aiming') {
           doShoot();
@@ -200,6 +209,15 @@ export default function GameCanvas() {
       {aimDots.map(d => (
         <View key={d.key} style={[styles.aimDot, { left: d.x - 4, top: d.y - 4 }]} />
       ))}
+
+      {/* Leg kick */}
+      {legPos && (
+        <Animated.View style={[styles.leg, { left: legPos.x - 18, top: legPos.y - 36, opacity: legOpacity }]}>
+          <View style={styles.legUpper} />
+          <View style={styles.legLower} />
+          <View style={styles.legBoot} />
+        </Animated.View>
+      )}
 
       {/* Ball */}
       <Animated.View style={[styles.ball, { left: ballAnim.x, top: ballAnim.y }]} />
@@ -292,4 +310,8 @@ const styles = StyleSheet.create({
   messageText: { color: 'white', fontSize: 36, fontWeight: 'bold' },
   instructions: { position: 'absolute', bottom: 80, left: 0, right: 0, alignItems: 'center', gap: 6 },
   instructText: { color: 'rgba(255,255,255,0.7)', fontSize: 14 },
+  leg: { position: 'absolute', alignItems: 'center' },
+  legUpper: { width: 10, height: 18, backgroundColor: '#fff', borderRadius: 4 },
+  legLower: { width: 10, height: 16, backgroundColor: '#f5c842', borderRadius: 4, marginTop: 1 },
+  legBoot: { width: 18, height: 10, backgroundColor: '#222', borderRadius: 4, marginTop: 1, marginLeft: 4 },
 });
