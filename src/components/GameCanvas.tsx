@@ -44,8 +44,8 @@ function SoccerBall({ x, y }: { x: Animated.Value; y: Animated.Value }) {
   );
 }
 
-const GK_WIDTH = 110;
-const GK_HEIGHT = 160;
+const GK_WIDTH = 70;
+const GK_HEIGHT = 95;
 
 function GoalkeeperSvg() {
   return (
@@ -112,7 +112,7 @@ function GoalkeeperSvg() {
 }
 
 function Goalkeeper({ x, goalTop }: { x: Animated.Value; goalTop: number }) {
-  const top = goalTop - GOAL_HEIGHT - GK_HEIGHT + 60;
+  const top = goalTop - GK_HEIGHT;
   return (
     <Animated.View style={{ position: 'absolute', top, left: Animated.add(x, new Animated.Value(-GK_WIDTH / 2 + GK_RADIUS)) }}>
       <GoalkeeperSvg />
