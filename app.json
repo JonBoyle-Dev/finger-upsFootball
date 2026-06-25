@@ -26,9 +26,7 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "bundler": "metro",
-      "output": "static",
-      "publicPath": "/finger-upsFootball/"
+      "bundler": "metro"
     },
     "plugins": [
       [

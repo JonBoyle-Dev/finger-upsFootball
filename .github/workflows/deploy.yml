@@ -18,7 +18,7 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Build web
-        run: npx expo export -p web
+        run: npx expo export --platform web
         env:
           NODE_ENV: production
 
@@ -27,3 +27,5 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
+          destination_dir: .
+
