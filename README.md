@@ -2,7 +2,7 @@
 
 A mobile-first football juggling and shooting game built with React Native + Expo, playable in the browser via GitHub Pages.
 
-🎮 **Play now:** [jonboyle82.github.io/finger-upsFootball](https://jonboyle82.github.io/finger-upsFootball/)
+🎮 **Play now:** [jonboyle-dev.github.io/finger-upsFootball](https://jonboyle-dev.github.io/finger-upsFootball/)
 
 ---
 
@@ -69,4 +69,4 @@ npm run ios      # iOS (requires Mac + Xcode)
 
 ## Developer
 
-Built by [JonBoyle82](https://github.com/JonBoyle82) — [JTC Technologies Group](https://jonboyle82.github.io/JTC-Technologies-Group/)
+Built by [JonBoyle-Dev](https://github.com/JonBoyle-Dev) — [JTC Technologies Group](https://jtctech.co.za/)
